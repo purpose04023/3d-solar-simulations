@@ -2,6 +2,8 @@
  * Keplerian orbital mechanics with Newton–Raphson solution of Kepler's equation.
  *
  * Positions are deterministic functions of elapsed time (and fixed orbital elements).
+ * Output uses a Three.js Y-up frame: the ecliptic lies in the X/Z plane (Y ≈ 0
+ * for zero inclination; inclination lifts the body in ±Y).
  */
 
 const TWO_PI = Math.PI * 2
@@ -61,17 +63,21 @@ export function trueAnomaly(E, e) {
 /**
  * Heliocentric position from classical orbital elements at time t.
  *
- * Elements use the standard 3-1-3 Euler sequence (Ω, i, ω).
+ * Classical 3-1-3 Euler (Ω, i, ω) is evaluated, then mapped into Three.js
+ * Y-up space so the reference plane is horizontal X/Z:
+ *   x = in-plane (from Ω / ω / ν)
+ *   y = out-of-plane (inclination) — 0 when i = 0
+ *   z = in-plane orthogonal axis
  *
  * @param {object} elements
- * @param {number} elements.a   Semi-major axis (scene units, e.g. AU-scaled)
+ * @param {number} elements.a   Semi-major axis (scene units)
  * @param {number} elements.e   Eccentricity
  * @param {number} elements.i   Inclination (radians)
  * @param {number} elements.Omega Longitude of ascending node Ω (radians)
  * @param {number} elements.omega Argument of periapsis ω (radians)
  * @param {number} elements.M0  Mean anomaly at epoch t=0 (radians)
- * @param {number} elements.n   Mean motion (radians per second of simulation time)
- * @param {number} t            Elapsed simulation time (seconds)
+ * @param {number} elements.n   Mean motion (radians per unit of t)
+ * @param {number} t            Elapsed time in the same units as period used for n
  * @returns {{ x: number, y: number, z: number, E: number, nu: number, r: number }}
  */
 export function orbitalPosition(elements, t) {
@@ -92,7 +98,6 @@ export function orbitalPosition(elements, t) {
   // Argument of latitude
   const u = omega + nu
 
-  // Rotate from orbital plane into heliocentric ecliptic-like frame
   const cosO = Math.cos(Omega)
   const sinO = Math.sin(Omega)
   const cosI = Math.cos(i)
@@ -100,15 +105,21 @@ export function orbitalPosition(elements, t) {
   const cosU = Math.cos(u)
   const sinU = Math.sin(u)
 
-  const x = r * (cosO * cosU - sinO * sinU * cosI)
-  const y = r * (sinO * cosU + cosO * sinU * cosI)
-  const z = r * (sinU * sinI)
+  // Classical ecliptic (X/Y plane, Z out) → Three.js Y-up (X/Z plane, Y up)
+  const xEcl = r * (cosO * cosU - sinO * sinU * cosI)
+  const yEcl = r * (sinO * cosU + cosO * sinU * cosI)
+  const zEcl = r * (sinU * sinI)
+
+  const x = xEcl
+  const y = zEcl // vertical; ~0 for i ≈ 0
+  const z = yEcl // second horizontal axis
 
   return { x, y, z, E, nu, r }
 }
 
 /**
  * Sample points along a full Keplerian orbit (for drawing trajectory rings).
+ * Same X/Z horizontal frame as orbitalPosition.
  *
  * @param {object} elements  Same shape as orbitalPosition (n, M0 unused)
  * @param {number} [segments=128]
@@ -133,9 +144,13 @@ export function sampleOrbit(elements, segments = 128) {
     const cosU = Math.cos(u)
     const sinU = Math.sin(u)
 
-    points[k * 3] = r * (cosO * cosU - sinO * sinU * cosI)
-    points[k * 3 + 1] = r * (sinO * cosU + cosO * sinU * cosI)
-    points[k * 3 + 2] = r * (sinU * sinI)
+    const xEcl = r * (cosO * cosU - sinO * sinU * cosI)
+    const yEcl = r * (sinO * cosU + cosO * sinU * cosI)
+    const zEcl = r * (sinU * sinI)
+
+    points[k * 3] = xEcl
+    points[k * 3 + 1] = zEcl
+    points[k * 3 + 2] = yEcl
   }
 
   return points
@@ -152,9 +167,9 @@ export function deg(deg) {
 
 /**
  * Mean motion from orbital period.
- * @param {number} periodSeconds
- * @returns {number} radians per second
+ * @param {number} period  Period in the same time unit used for t
+ * @returns {number} radians per unit time
  */
-export function meanMotion(periodSeconds) {
-  return TWO_PI / periodSeconds
+export function meanMotion(period) {
+  return TWO_PI / period
 }
